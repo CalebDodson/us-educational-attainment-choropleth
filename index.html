@@ -1,0 +1,174 @@
+<!DOCTYPE html>
+<html>
+    <head>
+        <meta charset="utf-8">
+        <meta name="viewport" content="width=device-width, initial-scale=1.0">
+        <title>United States Educational Attainment</title>
+
+        <link href="https://fonts.googleapis.com/css2?family=Montserrat:wght@700&family=Open+Sans:wght@400&display=swap" rel="stylesheet">
+        <script src="https://d3js.org/d3.v7.min.js"></script>
+        <script src="https://cdnjs.cloudflare.com/ajax/libs/topojson/3.0.2/topojson.min.js"></script>
+        <style>
+            body {
+                background-color: #1E1E1E;
+                color: #FFFFFF;
+                font-family: 'Open Sans', sans-serif;
+            }
+            h1 {
+                margin: 50px auto 0;
+                text-align: center;
+                font-size: 2.3em;
+                font-family: 'Montserrat', sans-serif;
+            }
+            #description {
+                margin: 10px auto 50px;
+                text-align: center;
+            }
+            svg {
+                margin: 0 auto;
+                display: flex;
+                justify-content: center;
+                background-color: #2C2C2C;
+                box-shadow: 0px 5px 5px -3px rgba(255, 255, 255, 0.3),
+                            0px 8px 10px 1px rgba(255, 255, 255, 0.24),
+                            0px 3px 14px 2px rgba(255, 255, 255, 0.22);
+                border-radius: 5px;
+                fill: #FFFFFF;
+            }
+            #legend {
+                margin: 0 auto 40px;
+            }
+            .county:hover {
+                cursor: pointer;
+                stroke: #FFFFFF;
+                stroke-width: 2;
+            }
+            #tooltip {
+                position: absolute;
+                background-color: #F8F8FF;
+                color: #1E1E1E;
+                padding: 8px;
+                border-radius: 5px;
+                pointer-events: none;
+                opacity: 0;
+                box-shadow: 0px 1px 3px rgba(0, 0, 0, 0.2), 
+                            0px 1px 1px rgba(0, 0, 0, 0.14), 
+                            0px 2px 1px rgba(0, 0, 0, 0.12);
+                z-index: 10; 
+            }
+        </style>
+    </head>
+    <body>
+        <h1 id="title">United States Educational Attainment</h1>
+        <div id="description">Percentage of adults age 25 and older with a bachelor's degree or higher (2010-2014)</div>
+        <svg id="legend"></svg>
+        <svg id="chloropleth"></svg>
+        <div id="tooltip"></div>
+        <script>
+            Promise.all([
+                fetch("https://cdn.freecodecamp.org/testable-projects-fcc/data/choropleth_map/for_user_education.json")
+                    .then(response => response.json()),
+                fetch("https://cdn.freecodecamp.org/testable-projects-fcc/data/choropleth_map/counties.json")
+                    .then(response => response.json())
+            ]).then(([educationData, countyData]) => {
+                const educationMap = {};
+                educationData.forEach(d => {
+                    educationMap[d.fips] = {
+                        education: d.bachelorsOrHigher,
+                        area_name: d.area_name,
+                        state: d.state
+                    }
+                })
+
+                const margin = { top: 20, right: 20, bottom: 20, left: 80 };
+                const width = 960;
+                const height = 600;
+
+                const svg = d3.select("#chloropleth")
+                    .attr("width", width + margin.right + margin.left)
+                    .attr("height", height + margin.top + margin.bottom);
+
+                const tooltip = d3.select("#tooltip");
+
+                svg.selectAll(".county")
+                    .data(topojson.feature(countyData, countyData.objects.counties).features)
+                    .enter()
+                    .append("path")
+                    .attr("class", "county")
+                    .attr("data-fips", d => d.id)
+                    .attr("data-education", d => educationMap[d.id]?.education || 0)
+                    .attr("transform", `translate(${margin.left}, ${margin.top})`)
+                    .attr("fill", d => {
+                        const education = educationMap[d.id]?.education || 0;
+                        return education <= 15 ? "#badbf7":
+                                education <= 30 ? "#82a8c7":
+                                education <= 45 ? "#4b7999":
+                                "#004c6d";
+                    })
+                    .attr("d", d3.geoPath())
+                    .on("mouseover", function (event, d) {
+                        const [x, y] = d3.pointer(event);
+                            tooltip.transition().style("opacity", 0.9);
+                            tooltip.html(
+                                    `${educationMap[d.id]?.area_name}, ${educationMap[d.id]?.state}<br>${educationMap[d.id]?.education}% with Bachelor's or higher`
+                                )
+                                .attr("data-education", educationMap[d.id]?.education || 0)
+                                .style("left", (event.pageX + 15) + "px")  // Adjusted to event.pageX/Y for better positioning
+                                .style("top", (event.pageY + 15) + "px");
+                    })
+                        .on("mouseout", function () {
+                            tooltip.transition().style("opacity", 0);
+                    });
+
+                    const legendMargin = { top: 20, right: 20, bottom: 30, left: 20 }
+                    const legendHeight = 20;
+                    const legendWidth = 200;
+
+                    const legendSvg = d3.select("#legend")
+                        .attr("width", legendWidth + legendMargin.right + legendMargin.left)
+                        .attr("height", legendHeight + legendMargin.top + legendMargin.bottom);
+                    
+                    const colorScale = d3.scaleThreshold()
+                        .domain([0, 15, 30, 45, 60])
+                        .range(["#badbf7", "#82a8c7", "#4b7999", "#004c6d", "#002F5D"]);
+
+                    const legendData = colorScale.domain().slice(0, -1);
+
+                    const legend = legendSvg.selectAll(".legend")
+                        .data(legendData)
+                        .enter()
+                        .append("g")
+                        .attr("class", "legend")
+                        .attr("transform", (d, i) => `translate(${legendMargin.left + i * (legendWidth / legendData.length)}, ${legendMargin.top})`);
+
+                    legend.append("rect")
+                        .attr("x", 0)
+                        .attr("y", 0)
+                        .attr("width", legendWidth / legendData.length)
+                        .attr("height", legendHeight)
+                        .attr("fill", d => colorScale(d));
+
+                    legend.append("text")
+                        .attr("x", (legendWidth / legendData.length - legendMargin.right * 2 - 5))
+                        .attr("y", legendHeight + 15)
+                        .attr("dy", "0.35em")
+                        .style("text-anchor", "middle")
+                        .style("font-size", "12px")
+                        .text(d => `${d}%`);
+
+                    legendSvg.append("text")
+                        .attr("x", legendWidth + legendMargin.left)
+                        .attr("y", legendHeight + legendMargin.top + 15)
+                        .attr("dy", "0.35em")
+                        .style("text-anchor", "middle")
+                        .style("font-size", "12px")
+                        .text(d => `60%`);
+
+             })
+                .catch(error => {
+                    console.error('Error fetching data:', error);
+            });
+        </script>
+        <script src="https://cdn.freecodecamp.org/testable-projects-fcc/v1/bundle.js"></script>
+    </body>
+</html>
